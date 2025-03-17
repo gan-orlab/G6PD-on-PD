@@ -1,4 +1,4 @@
-AMP-PD analysis
+# AMP-PD analysis
 
 plink --bfile chrX_FILTERED --chr X --from-bp 154432700 --to-bp 154632970 (154,531,390-154,547,572)--make-bed --out G6PD_part
 
@@ -44,5 +44,5 @@ tabix -f -p vcf G6PD_CADD_final.vcf.gz
 gunzip refFlat.txt.gz
 grep GLA refFlat.txt > GLA.txt
 
-### Run RV (Remember to remove sex from the script)
-rvtest --inVcf ~/runs/leahc/AMP_G6PD/AMP_PD/AMP_PD_G6PD_nonsyn_final.vcf.gz --kernel skato --geneFile ~/runs/leahc/AMP_G6PD/AMP_PD/G6PD.txt  --covar ~/runs/leahc/AMP_G6PD/AMP_PD/covar_AMP_femalescut.txt --covar-name Age --out amp_pd_G6PD_nonsyn_females --numThread 4 --freqUpper 0.01 --pheno ~/runs/leahc/AMP_G6PD/AMP_PD/covar_AMP_femalescut.txt --pheno-name PHENO
+### Run RV for CMC-burden on all sub variants
+rvtest --inVcf AMP_PD_G6PD_nonsyn_final.vcf.gz --kernel skato --geneFile G6PD.txt  --covar covar_AMP_PD.txt --covar-name Age,Sex --out amp_pd_G6PD_nonsyn_ --numThread 4 --freqUpper 0.01 --pheno pheno_AMP_PD.txt --pheno-name PHENO
