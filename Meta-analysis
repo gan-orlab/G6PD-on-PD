@@ -1,0 +1,23 @@
+library (tidyverse)
+installed.packages("meta")
+library(meta)
+library(data.table)
+setwd("C:/R_things")
+d<-fread("all_rare_all_cohorts.txt")
+head(d)
+# Assuming you have a column named 'SE' for standard errors
+# Calculate the standard error (seTE)
+d$seTE <- d$SE
+
+# Perform meta-analysis
+meta_object <- metagen(
+  TE = log(d$OR),
+  seTE = d$seTE
+)
+
+# Summarize the meta-analysis results
+meta_allrare <- summary(meta_object)
+
+# Print the summary
+print(meta_allrare)
+write.csv(meta_result, file = "meta_allrare.csv")
