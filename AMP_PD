@@ -1,1 +1,48 @@
+AMP-PD analysis
 
+plink --bfile chrX_FILTERED --chr X --from-bp 154432700 --to-bp 154632970 (154,531,390-154,547,572)--make-bed --out G6PD_part
+
+### convert bfiles to vcf 
+plink2 --bfile G6PD --recode vcf --out G6PD_part
+
+### convert the vcf to match annovar avinput for vcf
+perl ~/runs/leahc/AMP_G6PD/annovar/convert2annovar.pl --format vcf4 G6PD_part.vcf --allsample --withfreq --out G6PD_avinput
+
+### Download humandb
+perl ~/runs/senkkon/ANNOVAR/annovar/annotate_variation.pl -buildver hg38 -downdb -webfrom annovar clinvar_20221231 ~/runs/senkkon/ANNOVAR/annovar/humandb/
+
+### Annotation
+perl ~/runs/leahc/AMP_G6PD/annovar/table_annovar.pl G6PD_avinput ~/runs/leahc/AMP/annovar/humandb/ --buildver hg38 --out G6PDanno --remove --protocol refGene,ljb26_all,dbnsfp41c,clinvar_20221231 --operation g,f,f,f --nastring .  
+
+### CADD coding script using the annovar text output file "G6PDanno"
+awk -F '\t' 'NR>1 && $31>20 {print $1" "$2" "$3" "$7}' G6PDanno.hg38_multianno.txt > G6PD_CADD.txt
+
+### NS
+awk -F '\t' '$9 ~ /nonsyn/ {print $1" "$2" "$3" "$7}'   G6PDanno.hg38_multianno.txt  > AMP_nonsyn.txt
+
+### LOF
+awk -F '\t' '$9 ~ /stop|frame/ || $6 ~ /splicing/ {print $1" "$2" "$3" "$7}'   G6PDanno.hg38_multianno.txt  > AMP_LOF.txt
+
+### Functional
+awk -F '\t' '$9 ~ /nonsyn|stop|frame/ || $6 ~ /splicing/ {print $1, $2, $3, $7}'  G6PDanno.hg38_multianno.txt  > AMP_functional.txt 
+
+
+
+### Extract variants from annotated for CADD or it means combine and matchCADD and G6PD bfiles AND FOR THE OTHERS?
+plink2 --bfile G6PD_part --extract range AMP_G6PD_CADD.txt --export vcf bgz id-paste=fid --out AMP_PD_G6PD_CADD_final
+
+### Run TABIX
+
+#run tabix for all files
+module load nixpkgs/16.09
+module load intel/2018.3
+module load tabix/0.2.6
+tabix -f -p vcf G6PD_CADD_final.vcf.gz
+
+
+### to get G6PD.txt hg38 format
+gunzip refFlat.txt.gz
+grep GLA refFlat.txt > GLA.txt
+
+### Run RV (Remember to remove sex from the script)
+rvtest --inVcf ~/runs/leahc/AMP_G6PD/AMP_PD/AMP_PD_G6PD_nonsyn_final.vcf.gz --kernel skato --geneFile ~/runs/leahc/AMP_G6PD/AMP_PD/G6PD.txt  --covar ~/runs/leahc/AMP_G6PD/AMP_PD/covar_AMP_femalescut.txt --covar-name Age --out amp_pd_G6PD_nonsyn_females --numThread 4 --freqUpper 0.01 --pheno ~/runs/leahc/AMP_G6PD/AMP_PD/covar_AMP_femalescut.txt --pheno-name PHENO
