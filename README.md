@@ -15,7 +15,7 @@
 
 #Common variants association at MAF>1% was done using logistic models in plink
   
-#burden analysis and meta-analysis between cohort was performed using CMC-burden and metagen packages
+#burden analysis and meta-analysis between cohort was performed using CMC-burden Using (Rare variant) RV test and metagen packages
  Further information is described in CMC and Meta-analysis scripy
 
   
