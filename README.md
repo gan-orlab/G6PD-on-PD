@@ -7,12 +7,12 @@
 
 #AMP-PD data cohort
   Data was attained using Terra platform (Data was already QC'd and imputed before at https://github.com/gan-orlab/ARSA/blob/main/AMP_PD). Alignment for these data was performed using the human reference genome (hg38)
-  detailed filtration in AMP-PD script
+  detailed analysis in AMP-PD script
   
 
 #UKBB cohort
   UKBB data was accessed through Neurohub using UKBRAP 
-  detailed filteration in UKBB script 
+  detailed filteration and analysis in UKBB script 
 
 #Common variants association at MAF>1% was done using logistic models in plink
   
