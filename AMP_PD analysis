@@ -46,3 +46,190 @@ grep GLA refFlat.txt > GLA.txt
 
 ### Run RV for CMC-burden on all sub variants
 rvtest --inVcf AMP_PD_G6PD_nonsyn_final.vcf.gz --kernel skato --geneFile G6PD.txt  --covar covar_AMP_PD.txt --covar-name Age,Sex --out amp_pd_G6PD_nonsyn_ --numThread 4 --freqUpper 0.01 --pheno pheno_AMP_PD.txt --pheno-name PHENO
+
+
+### Alternative approach using SKAT-O in R 
+#Option 2
+## Load libraries
+install.packages("dplyr")
+install.packages("SKAT")
+install.packages("bigsnpr")
+
+## load
+library(dplyr)
+library(SKAT)
+library(bigsnpr)
+
+# Memory management
+options(bigsnpr.download = FALSE)
+gc()
+
+## Set paths
+setwd("~/Desktop/R_things/SKAT")
+snp_readBed("UKBB_GQ20_DP30_MAF_0.01_covar_mac2.bed") 
+
+bfile <- "~/Desktop/R_things/SKAT/UKBB_GQ20_DP30_MAF_0.01_covar_mac2"
+covar_file <- "covar_UKBB_prxy_females_binary_1to10.txt"
+setid_file <- "UKBB_wproxies_G6PD_SETID.txt"
+
+## Load data
+genotype_data <- snp_attach(paste0(bfile, ".rds"))
+covariates <- read.table(covar_file, header = TRUE) %>%
+mutate(Sex = ifelse(as.numeric(Sex) == 0, NA, as.numeric(Sex)))
+
+# Match samples
+matching_indices <- match(covariates$IID, genotype_data$fam$sample.ID)
+covariates <- covariates[!is.na(matching_indices), ]
+matching_indices <- na.omit(matching_indices)
+# Store sample count
+nSamples <- length(matching_indices)
+
+
+## Create null model
+obj.x <- SKAT_Null_Model_ChrX(Status ~ Age + Sex, SexVar = "Sex", 
+                             out_type = "D", data = covariates)
+
+## Load SETID data
+setid_data <- read.table(setid_file, header = TRUE, sep = "\t")
+setid_list <- split(setid_data$Variant_ID, setid_data$SET_ID_name)
+snp_ids <- genotype_data$map$marker.ID
+
+## Ultra-conservative chunked processing (20 SNPs at a time)
+run_skat_super_chunked <- function(snp_indices, chunk_size = 20) {
+  n_snps <- length(snp_indices)
+  n_chunks <- ceiling(n_snps/chunk_size)
+  
+  # Initialize results
+  all_results <- list(
+    SKAT = numeric(n_chunks),
+    Burden = numeric(n_chunks),
+    SKATO = numeric(n_chunks)
+  )
+  
+  for (i in 1:n_chunks) {
+    chunk_start <- (i-1)*chunk_size + 1
+    chunk_end <- min(i*chunk_size, n_snps)
+    current_indices <- snp_indices[chunk_start:chunk_end]
+    
+    # Process this small chunk
+    Z_chunk <- genotype_data$genotypes[matching_indices, current_indices, drop = FALSE]
+    
+    all_results$SKAT[i] <- SKAT_ChrX(Z_chunk, obj.x, kernel = "linear.weighted", 
+                                    is_X.inact = FALSE)$p.value
+    all_results$Burden[i] <- SKAT_ChrX(Z_chunk, obj.x, kernel = "linear.weighted", 
+                                      r.corr = 1, is_X.inact = FALSE)$p.value
+    all_results$SKATO[i] <- SKAT_ChrX(Z_chunk, obj.x, kernel = "linear.weighted", 
+                                     method = "SKATO", is_X.inact = FALSE)$p.value
+    
+    
+    # Aggressive memory cleanup
+    rm(Z_chunk)
+    gc()
+    
+    # Progress report
+    if (i %% 5 == 0) cat("Processed chunk", i, "of", n_chunks, "\n")
+  }
+  
+   #Fisher's method to combine p-values
+   combine_p <- function(pvals) {
+    pvals <- pvals[!is.na(pvals)]
+    if (length(pvals) == 0) return(NA)
+    pchisq(-2 * sum(log(pvals)), df = 2*length(pvals), lower.tail = FALSE)
+  }
+  
+  
+  list(
+    SKAT = combine_p(all_results$SKAT),
+    Burden = combine_p(all_results$Burden),
+    SKATO = combine_p(all_results$SKATO)
+  )
+}
+
+## Process each gene set
+results <- list()
+
+for (set in names(setid_list)) {
+  cat("\nProcessing", set, "...\n")
+  
+  
+  snps_in_set <- setid_list[[set]]
+  snp_indices <- which(snp_ids %in% snps_in_set)
+  
+  
+  if (length(snp_indices) == 0) {
+    warning(paste("No SNPs found for", set))
+    next
+  }
+  
+  # Use ultra-conservative chunking for large sets
+  if (length(snp_indices) > 20) {
+    cat("Large set detected (", length(snp_indices), "SNPs), using chunked processing...\n")
+    results[[set]] <- run_skat_super_chunked(snp_indices)
+  } else {
+    cat("Small set (", length(snp_indices), "SNPs), processing normally...\n")
+    Z_subset <- genotype_data$genotypes[matching_indices, snp_indices, drop = FALSE]
+    results[[set]] <- list(
+      SKAT = SKAT_ChrX(Z_subset, obj.x, kernel = "linear.weighted", is_X.inact = FALSE)$p.value,
+      Burden = SKAT_ChrX(Z_subset, obj.x, kernel = "linear.weighted", r.corr = 1, is_X.inact = FALSE)$p.value,
+      SKATO = SKAT_ChrX(Z_subset, obj.x, kernel = "linear.weighted", method = "SKATO", is_X.inact = FALSE)$p.value
+    )
+  }
+  
+  
+  # Save intermediate results every 5 sets
+  if (length(results) %% 5 == 0) {
+    temp_file <- paste0("SKAT_temp_results_", length(results), ".rds")
+    saveRDS(results, temp_file)
+    cat("Saved temporary results to", temp_file, "\n")
+  }
+}
+
+## Create final results
+results_df <- data.frame(
+  SetID = names(results),
+  SKAT_p = sapply(results, function(x) ifelse(is.null(x$SKAT), NA, x$SKAT)),
+  Burden_p = sapply(results, function(x) ifelse(is.null(x$Burden), NA, x$Burden)),
+  SKATO_p = sapply(results, function(x) ifelse(is.null(x$SKATO), NA, x$SKATO)),
+  nSNPs = sapply(setid_list[names(results)], length),
+  stringsAsFactors = FALSE
+)
+
+## Print results to console with formatting
+cat("\n\n=== SKAT ANALYSIS RESULTS ===\n\n")
+
+# Print all results if small, or just top/bottom if large
+#if (nrow(results_df) <= 20) {
+ # print(results_df)
+#} else {
+  #cat("First 10 results:\n")
+  #print(head(results_df, 10))
+  #cat("\nLast 10 results:\n")
+  #print(tail(results_df, 10))
+ # cat("\n(Showing 20 of", nrow(results_df), "total gene sets)\n")
+#}
+
+
+# Add nSamples column (same for all rows, from matching_indices length)
+results_df$nSamples <- length(matching_indices)
+
+
+# Print all results if small, or just top/bottom if large
+if (nrow(results_df) <= 20) {
+  print(results_df)
+} else {
+  cat("First 10 results:\n")
+  print(head(results_df, 10))
+  cat("\nLast 10 results:\n")
+  print(tail(results_df, 10))
+  cat("\n(Showing 20 of", nrow(results_df), "total gene sets; each with",
+      unique(results_df$nSamples), "samples)\n")
+}
+
+
+# Add summary statistics
+cat("\n=== SUMMARY STATISTICS ===\n")
+cat("Number of gene sets analyzed:", nrow(results_df), "\n")
+cat("Range of p-values:\n")
+cat("  SKAT:   ", format(range(results_df$SKAT_p, na.rm = TRUE), digits = 3), "\n")
+cat("  Burden: ", format(range(results_df$Burden_p, na.rm = TRUE), digits = 3), "\n")
+cat("  SKATO:  ", format(range(results_df$SKATO_p, na.rm = TRUE), digits = 3), "\n")
