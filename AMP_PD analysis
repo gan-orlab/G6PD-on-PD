@@ -66,11 +66,11 @@ gc()
 
 ## Set paths
 setwd("~/Desktop/R_things/SKAT")
-snp_readBed("UKBB_GQ20_DP30_MAF_0.01_covar_mac2.bed") 
+snp_readBed("AMP_PD_MAF_0.01_covar_mac2.bed") 
 
-bfile <- "~/Desktop/R_things/SKAT/UKBB_GQ20_DP30_MAF_0.01_covar_mac2"
-covar_file <- "covar_UKBB_prxy_females_binary_1to10.txt"
-setid_file <- "UKBB_wproxies_G6PD_SETID.txt"
+bfile <- "~/Desktop/R_things/SKAT/AMP_PD_MAF_0.01_covar_mac2"
+covar_file <- "covar_AMP_PD.txt"
+setid_file <- "AMP_PD_G6PD_SETID.txt"
 
 ## Load data
 genotype_data <- snp_attach(paste0(bfile, ".rds"))
