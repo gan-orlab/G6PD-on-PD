@@ -19,4 +19,4 @@
 #burden analysis and meta-analysis between cohort was performed using CMC-burden Using (Rare variant) RV test and metagen packages
  Further information is described in CMC and Meta-analysis script
 
-  
+ ##Update SKAT-O approcach and meta-analysis using Meta-SKAT 
