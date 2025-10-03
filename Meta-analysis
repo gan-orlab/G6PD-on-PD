@@ -1,3 +1,4 @@
+## USING mETAGEN
 library (tidyverse)
 installed.packages("meta")
 library(meta)
@@ -21,3 +22,849 @@ meta_allrare <- summary(meta_object)
 # Print the summary
 print(meta_allrare)
 write.csv(meta_result, file = "meta_allrare.csv")
+
+### MeTA-ANALYSIS using MetaSKAT for SKAT-O
+ MetaSKAT for combined
+  library(SKAT)
+  library(MetaSKAT)
+  
+  # Set working directory
+  setwd("~/Desktop/R_things/SKAT")
+  
+  # Output files
+  File.Meta.SKATO <- "G6PD_meta.results.skato"
+  File.Meta.BURDEN <- "G6PD_meta.results.burden"
+  File.Meta.SKAT <- "G6PD_meta.results.SKAT"
+  # Cohorts
+  cohorts <- c("FRENCH", "USA", "RUSSIA", "Israel", "AMP_PD", "UKBB")
+  
+  # Prepare meta-analysis file paths
+  File.Mat.vec <- rep("", length(cohorts))
+  File.SetInfo.vec <- rep("", length(cohorts))
+  
+ 
+  ## STEP 1: Run SKAT per cohort
+
+  i <- 1
+  for (cohort in cohorts) {
+    message(paste0("\nProcessing cohort: ", cohort))
+    
+    # Define file paths
+    File.Bed    <- paste0(cohort, ".bed")
+    File.Bim    <- paste0(cohort, ".bim")
+    File.Fam    <- paste0(cohort, ".fam")
+    File.SetID  <- paste0(cohort, "_G6PD_SETID.txt")
+    File.SSD    <- paste0(cohort, ".SSD")
+    File.Info   <- paste0(cohort, ".info")
+    File.Mat    <- paste0(cohort, ".mat")
+    File.SetInfo <- paste0(cohort, ".MInfo")
+    File.Cov    <- paste0("covar_", cohort, "_G6PD_forR.txt")
+    File.Results.SKATO <- paste0(cohort, ".results.skato")
+    File.Results.BURDEN <- paste0(cohort, ".results.burden")
+    File.Results.SKAT <- paste0(cohort, ".results.skat")
+    
+    # Check if required files exist
+    required_files <- c(File.Bed, File.Bim, File.Fam, File.SetID, File.Cov)
+    missing_files <- required_files[!file.exists(required_files)]
+    
+    if (length(missing_files) > 0) {
+      stop(paste("ERROR: Missing files for cohort", cohort, ":\n", 
+                 paste(missing_files, collapse = "\n")))
+    }
+    
+    ## RUN SKAT (Continuous Phenotype)
+    tryCatch({
+      # Generate SSD
+      Generate_SSD_SetID(File.Bed, File.Bim, File.Fam, File.SetID, File.SSD, File.Info)
+      SSD.INFO <- Open_SSD(File.SSD, File.Info)
+      
+      # Load phenotype & covariates (continuous trait)
+      FAM <- Read_Plink_FAM_Cov(File.Fam, File.Cov, Is.binary = TRUE, cov_header = TRUE)
+      y   <- FAM$Status  # Continuous phenotype (no need to subtract 1)
+      Age <- FAM$Age
+      Sex <- FAM$Sex.y
+      N.Sample <- length(y)
+      
+      # Fit null model (out_type = "C" for continuous)
+      obj <- SKAT_Null_Model(y ~ Age + Sex, out_type = "D")
+      
+      # Run SKAT tests
+      out.skato <- SKAT.SSD.All(SSD.INFO, obj, method = "optimal.adj")
+      out.skato.burden <- SKAT.SSD.All(SSD.INFO, obj, method = "Burden")
+      out.skat <- SKAT.SSD.All(SSD.INFO, obj, method = "SKAT")  
+      # Save results
+      write.table(out.skato$results, file = File.Results.SKATO, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skato.burden$results, file = File.Results.BURDEN, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skat$results, file = File.Results.SKAT, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      
+      # Generate meta-analysis files
+      Generate_Meta_Files(obj, File.Bed, File.Bim, File.SetID, File.Mat, File.SetInfo, N.Sample)
+      
+      # Store meta-analysis file paths
+      File.Mat.vec[i] <- File.Mat
+      File.SetInfo.vec[i] <- File.SetInfo
+      
+      # Close SSD
+      Close_SSD()
+      
+      message(paste0("Successfully processed: ", cohort))
+    }, error = function(e) {
+      message(paste0("ERROR in cohort ", cohort, ": ", e$message))
+    })
+    
+    i <- i + 1
+  }
+  
+
+  ## STEP 2: META-ANALYSIS
+  if (all(file.exists(File.Mat.vec)) && all(file.exists(File.SetInfo.vec))) {
+    tryCatch({
+      # Read meta-analysis files
+      Cohort.Info <- Open_MSSD_File_2Read(File.Mat.vec, File.SetInfo.vec)
+      
+      # Run meta-analysis
+      out.skato <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "optimal")
+      out.skato.burden <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "Burden")
+      out.skat <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "SKAT")
+    
+        # Save results
+      write.table(out.skato, file = File.Meta.SKATO, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skato.burden, file = File.Meta.BURDEN, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skat, file = File.Meta.SKAT, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      
+      message("\nMeta-analysis completed successfully!")
+    }, error = function(e) {
+      message(paste0("ERROR in meta-analysis: ", e$message))
+    })
+  } else {
+    message("\nERROR: Some meta-analysis input files are missing. Check if all cohorts ran correctly.")
+  }
+
+############################################
+  
+  
+  
+###############################################################
+# Meta - males 
+  library(SKAT)
+  library(MetaSKAT)
+  
+  # Set working directory
+  setwd("~/Desktop/R_things/SKAT")
+  
+  # Output files
+  File.Meta.SKATO <- "M_GLA_meta.results.skato"
+  File.Meta.BURDEN <- "M_GLA_meta.results.burden"
+  File.Meta.SKAT <- "M_GLA_meta.results.SKAT"
+  # Cohorts
+  cohorts <- c("Colu_Male", "PPMI_Male")
+  
+  # Prepare meta-analysis file paths
+  File.Mat.vec <- rep("", length(cohorts))
+  File.SetInfo.vec <- rep("", length(cohorts))
+  
+  
+  ## STEP 1: Run SKAT per cohort
+  
+  i <- 1
+  for (cohort in cohorts) {
+    message(paste0("\nProcessing cohort: ", cohort))
+    
+    # Define file paths
+    File.Bed    <- paste0(cohort, ".bed")
+    File.Bim    <- paste0(cohort, ".bim")
+    File.Fam    <- paste0(cohort, ".fam")
+    File.SetID  <- paste0(cohort, ".SETID.txt")
+    File.SSD    <- paste0(cohort, ".SSD")
+    File.Info   <- paste0(cohort, ".info")
+    File.Mat    <- paste0(cohort, ".mat")
+    File.SetInfo <- paste0(cohort, ".MInfo")
+    File.Cov    <- paste0("covar_", cohort, ".txt")
+    File.Results.SKATO <- paste0(cohort, ".results.skato")
+    File.Results.BURDEN <- paste0(cohort, ".results.burden")
+    File.Results.SKAT <- paste0(cohort, ".results.skat")
+    
+    # Check if required files exist
+    required_files <- c(File.Bed, File.Bim, File.Fam, File.SetID, File.Cov)
+    missing_files <- required_files[!file.exists(required_files)]
+    
+    if (length(missing_files) > 0) {
+      stop(paste("ERROR: Missing files for cohort", cohort, ":\n", 
+                 paste(missing_files, collapse = "\n")))
+    }
+    
+    ## RUN SKAT (Continuous Phenotype)
+    tryCatch({
+      # Generate SSD
+      Generate_SSD_SetID(File.Bed, File.Bim, File.Fam, File.SetID, File.SSD, File.Info)
+      SSD.INFO <- Open_SSD(File.SSD, File.Info)
+      
+      # Load phenotype & covariates (continuous trait)
+      FAM <- Read_Plink_FAM_Cov(File.Fam, File.Cov, Is.binary = FALSE, cov_header = TRUE)
+      y   <- FAM$Status  # Continuous phenotype (no need to subtract 1)
+      Age <- FAM$Age
+      Sex <- FAM$Sex.y
+      N.Sample <- length(y)
+      
+      # Fit null model (out_type = "C" for continuous)
+      obj <- SKAT_Null_Model(y ~ Age, out_type = "C")
+      
+      # Run SKAT tests
+      out.skato <- SKAT.SSD.All(SSD.INFO, obj, method = "optimal.adj")
+      out.skato.burden <- SKAT.SSD.All(SSD.INFO, obj, method = "Burden")
+      out.skat <- SKAT.SSD.All(SSD.INFO, obj, method = "SKAT")  
+      # Save results
+      write.table(out.skato$results, file = File.Results.SKATO, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skato.burden$results, file = File.Results.BURDEN, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skat$results, file = File.Results.SKAT, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      
+      # Generate meta-analysis files
+      Generate_Meta_Files(obj, File.Bed, File.Bim, File.SetID, File.Mat, File.SetInfo, N.Sample)
+      
+      # Store meta-analysis file paths
+      File.Mat.vec[i] <- File.Mat
+      File.SetInfo.vec[i] <- File.SetInfo
+      
+      # Close SSD
+      Close_SSD()
+      
+      message(paste0("Successfully processed: ", cohort))
+    }, error = function(e) {
+      message(paste0("ERROR in cohort ", cohort, ": ", e$message))
+    })
+    
+    i <- i + 1
+  }
+  
+  ## STEP 2: META-ANALYSIS
+  if (all(file.exists(File.Mat.vec)) && all(file.exists(File.SetInfo.vec))) {
+    tryCatch({
+      # Read meta-analysis files
+      Cohort.Info <- Open_MSSD_File_2Read(File.Mat.vec, File.SetInfo.vec)
+      
+      # Run meta-analysis
+      out.skato <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "optimal")
+      out.skato.burden <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "Burden")
+      out.skat <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "SKAT")
+      
+      # Save results
+      write.table(out.skato, file = File.Meta.SKATO, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skato.burden, file = File.Meta.BURDEN, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skat, file = File.Meta.SKAT, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      
+      message("\nMeta-analysis completed successfully!")
+    }, error = function(e) {
+      message(paste0("ERROR in meta-analysis: ", e$message))
+    })
+  } else {
+    message("\nERROR: Some meta-analysis input files are missing. Check if all cohorts ran correctly.")
+  }
+  
+
+############################################
+  
+  
+  
+###############################################################
+# Meta - females   
+  library(SKAT)
+  library(MetaSKAT)
+  
+  # Set working directory
+  setwd("~/Desktop/R_things/SKAT")
+  
+  # Output files
+  File.Meta.SKATO <- "F_GLA_meta.results.skato"
+  File.Meta.BURDEN <- "F_GLA_meta.results.burden"
+  File.Meta.SKAT <- "F_GLA_meta.results.SKAT"
+  # Cohorts
+  cohorts <- c("Colu_Female", "PPMI_Female")
+  
+  # Prepare meta-analysis file paths
+  File.Mat.vec <- rep("", length(cohorts))
+  File.SetInfo.vec <- rep("", length(cohorts))
+  
+  
+  ## STEP 1: Run SKAT per cohort
+  
+  i <- 1
+  for (cohort in cohorts) {
+    message(paste0("\nProcessing cohort: ", cohort))
+    
+    # Define file paths
+    File.Bed    <- paste0(cohort, ".bed")
+    File.Bim    <- paste0(cohort, ".bim")
+    File.Fam    <- paste0(cohort, ".fam")
+    File.SetID  <- paste0(cohort, ".SETID.txt")
+    File.SSD    <- paste0(cohort, ".SSD")
+    File.Info   <- paste0(cohort, ".info")
+    File.Mat    <- paste0(cohort, ".mat")
+    File.SetInfo <- paste0(cohort, ".MInfo")
+    File.Cov    <- paste0("covar_", cohort, ".txt")
+    File.Results.SKATO <- paste0(cohort, ".results.skato")
+    File.Results.BURDEN <- paste0(cohort, ".results.burden")
+    File.Results.SKAT <- paste0(cohort, ".results.skat")
+    
+    # Check if required files exist
+    required_files <- c(File.Bed, File.Bim, File.Fam, File.SetID, File.Cov)
+    missing_files <- required_files[!file.exists(required_files)]
+    
+    if (length(missing_files) > 0) {
+      stop(paste("ERROR: Missing files for cohort", cohort, ":\n", 
+                 paste(missing_files, collapse = "\n")))
+    }
+    
+    ## RUN SKAT (Continuous Phenotype)
+    tryCatch({
+      # Generate SSD
+      Generate_SSD_SetID(File.Bed, File.Bim, File.Fam, File.SetID, File.SSD, File.Info)
+      SSD.INFO <- Open_SSD(File.SSD, File.Info)
+      
+      # Load phenotype & covariates (continuous trait)
+      FAM <- Read_Plink_FAM_Cov(File.Fam, File.Cov, Is.binary = FALSE, cov_header = TRUE)
+      y   <- FAM$Status  # Continuous phenotype (no need to subtract 1)
+      Age <- FAM$Age
+      Sex <- FAM$Sex.y
+      N.Sample <- length(y)
+      
+      # Fit null model (out_type = "C" for continuous)
+      obj <- SKAT_Null_Model(y ~ Age, out_type = "C")
+      
+      # Run SKAT tests
+      out.skato <- SKAT.SSD.All(SSD.INFO, obj, method = "optimal.adj")
+      out.skato.burden <- SKAT.SSD.All(SSD.INFO, obj, method = "Burden")
+      out.skat <- SKAT.SSD.All(SSD.INFO, obj, method = "SKAT")  
+      # Save results
+      write.table(out.skato$results, file = File.Results.SKATO, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skato.burden$results, file = File.Results.BURDEN, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skat$results, file = File.Results.SKAT, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      
+      # Generate meta-analysis files
+      Generate_Meta_Files(obj, File.Bed, File.Bim, File.SetID, File.Mat, File.SetInfo, N.Sample)
+      
+      # Store meta-analysis file paths
+      File.Mat.vec[i] <- File.Mat
+      File.SetInfo.vec[i] <- File.SetInfo
+      
+      # Close SSD
+      Close_SSD()
+      
+      message(paste0("Successfully processed: ", cohort))
+    }, error = function(e) {
+      message(paste0("ERROR in cohort ", cohort, ": ", e$message))
+    })
+    
+    i <- i + 1
+  }
+  
+  ## STEP 2: META-ANALYSIS
+  if (all(file.exists(File.Mat.vec)) && all(file.exists(File.SetInfo.vec))) {
+    tryCatch({
+      # Read meta-analysis files
+      Cohort.Info <- Open_MSSD_File_2Read(File.Mat.vec, File.SetInfo.vec)
+      
+      # Run meta-analysis
+      out.skato <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "optimal")
+      out.skato.burden <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "Burden")
+      out.skat <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "SKAT")
+      
+      # Save results
+      write.table(out.skato, file = File.Meta.SKATO, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skato.burden, file = File.Meta.BURDEN, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skat, file = File.Meta.SKAT, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      
+      message("\nMeta-analysis completed successfully!")
+    }, error = function(e) {
+      message(paste0("ERROR in meta-analysis: ", e$message))
+    })
+  } else {
+    message("\nERROR: Some meta-analysis input files are missing. Check if all cohorts ran correctly.")
+  }
+#############################################################################################################################
+  
+# MetaSKAT for combined
+  library(SKAT)
+  library(MetaSKAT)
+  
+  # Set working directory
+  setwd("~/Desktop/R_things/SKAT")
+  
+  # Output files
+  File.Meta.SKATO <- "GLA_meta.results.skato"
+  File.Meta.BURDEN <- "GLA_meta.results.burden"
+  File.Meta.SKAT <- "GLA_meta.results.SKAT"
+  # Cohorts
+  cohorts <- c("Colu", "PPMI")
+  
+  # Prepare meta-analysis file paths
+  File.Mat.vec <- rep("", length(cohorts))
+  File.SetInfo.vec <- rep("", length(cohorts))
+  
+ 
+  ## STEP 1: Run SKAT per cohort
+
+  i <- 1
+  for (cohort in cohorts) {
+    message(paste0("\nProcessing cohort: ", cohort))
+    
+    # Define file paths
+    File.Bed    <- paste0(cohort, ".bed")
+    File.Bim    <- paste0(cohort, ".bim")
+    File.Fam    <- paste0(cohort, ".fam")
+    File.SetID  <- paste0(cohort, ".SETID.txt")
+    File.SSD    <- paste0(cohort, ".SSD")
+    File.Info   <- paste0(cohort, ".info")
+    File.Mat    <- paste0(cohort, ".mat")
+    File.SetInfo <- paste0(cohort, ".MInfo")
+    File.Cov    <- paste0("covar_", cohort, ".txt")
+    File.Results.SKATO <- paste0(cohort, ".results.skato")
+    File.Results.BURDEN <- paste0(cohort, ".results.burden")
+    File.Results.SKAT <- paste0(cohort, ".results.skat")
+    
+    # Check if required files exist
+    required_files <- c(File.Bed, File.Bim, File.Fam, File.SetID, File.Cov)
+    missing_files <- required_files[!file.exists(required_files)]
+    
+    if (length(missing_files) > 0) {
+      stop(paste("ERROR: Missing files for cohort", cohort, ":\n", 
+                 paste(missing_files, collapse = "\n")))
+    }
+    
+    ## RUN SKAT (Continuous Phenotype)
+    tryCatch({
+      # Generate SSD
+      Generate_SSD_SetID(File.Bed, File.Bim, File.Fam, File.SetID, File.SSD, File.Info)
+      SSD.INFO <- Open_SSD(File.SSD, File.Info)
+      
+      # Load phenotype & covariates (continuous trait)
+      FAM <- Read_Plink_FAM_Cov(File.Fam, File.Cov, Is.binary = FALSE, cov_header = TRUE)
+      y   <- FAM$Status  # Continuous phenotype (no need to subtract 1)
+      Age <- FAM$Age
+      Sex <- FAM$Sex.y
+      N.Sample <- length(y)
+      
+      # Fit null model (out_type = "C" for continuous)
+      obj <- SKAT_Null_Model(y ~ Age + Sex, out_type = "C")
+      
+      # Run SKAT tests
+      out.skato <- SKAT.SSD.All(SSD.INFO, obj, method = "optimal.adj")
+      out.skato.burden <- SKAT.SSD.All(SSD.INFO, obj, method = "Burden")
+      out.skat <- SKAT.SSD.All(SSD.INFO, obj, method = "SKAT")  
+      # Save results
+      write.table(out.skato$results, file = File.Results.SKATO, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skato.burden$results, file = File.Results.BURDEN, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skat$results, file = File.Results.SKAT, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      
+      # Generate meta-analysis files
+      Generate_Meta_Files(obj, File.Bed, File.Bim, File.SetID, File.Mat, File.SetInfo, N.Sample)
+      
+      # Store meta-analysis file paths
+      File.Mat.vec[i] <- File.Mat
+      File.SetInfo.vec[i] <- File.SetInfo
+      
+      # Close SSD
+      Close_SSD()
+      
+      message(paste0("Successfully processed: ", cohort))
+    }, error = function(e) {
+      message(paste0("ERROR in cohort ", cohort, ": ", e$message))
+    })
+    
+    i <- i + 1
+  }
+  
+
+  ## STEP 2: META-ANALYSIS
+  if (all(file.exists(File.Mat.vec)) && all(file.exists(File.SetInfo.vec))) {
+    tryCatch({
+      # Read meta-analysis files
+      Cohort.Info <- Open_MSSD_File_2Read(File.Mat.vec, File.SetInfo.vec)
+      
+      # Run meta-analysis
+      out.skato <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "optimal")
+      out.skato.burden <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "Burden")
+      out.skat <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "SKAT")
+    
+        # Save results
+      write.table(out.skato, file = File.Meta.SKATO, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skato.burden, file = File.Meta.BURDEN, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skat, file = File.Meta.SKAT, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      
+      message("\nMeta-analysis completed successfully!")
+    }, error = function(e) {
+      message(paste0("ERROR in meta-analysis: ", e$message))
+    })
+  } else {
+    message("\nERROR: Some meta-analysis input files are missing. Check if all cohorts ran correctly.")
+  }
+
+############################################
+  
+  
+  
+###############################################################
+# Meta - males 
+  library(SKAT)
+  library(MetaSKAT)
+  
+  # Set working directory
+  setwd("~/Desktop/R_things/SKAT")
+  
+  # Output files
+  File.Meta.SKATO <- "M_GLA_meta.results.skato"
+  File.Meta.BURDEN <- "M_GLA_meta.results.burden"
+  File.Meta.SKAT <- "M_GLA_meta.results.SKAT"
+  # Cohorts
+  cohorts <- c("Colu_Male", "PPMI_Male")
+  
+  # Prepare meta-analysis file paths
+  File.Mat.vec <- rep("", length(cohorts))
+  File.SetInfo.vec <- rep("", length(cohorts))
+  
+  
+  ## STEP 1: Run SKAT per cohort
+  
+  i <- 1
+  for (cohort in cohorts) {
+    message(paste0("\nProcessing cohort: ", cohort))
+    
+    # Define file paths
+    File.Bed    <- paste0(cohort, ".bed")
+    File.Bim    <- paste0(cohort, ".bim")
+    File.Fam    <- paste0(cohort, ".fam")
+    File.SetID  <- paste0(cohort, ".SETID.txt")
+    File.SSD    <- paste0(cohort, ".SSD")
+    File.Info   <- paste0(cohort, ".info")
+    File.Mat    <- paste0(cohort, ".mat")
+    File.SetInfo <- paste0(cohort, ".MInfo")
+    File.Cov    <- paste0("covar_", cohort, ".txt")
+    File.Results.SKATO <- paste0(cohort, ".results.skato")
+    File.Results.BURDEN <- paste0(cohort, ".results.burden")
+    File.Results.SKAT <- paste0(cohort, ".results.skat")
+    
+    # Check if required files exist
+    required_files <- c(File.Bed, File.Bim, File.Fam, File.SetID, File.Cov)
+    missing_files <- required_files[!file.exists(required_files)]
+    
+    if (length(missing_files) > 0) {
+      stop(paste("ERROR: Missing files for cohort", cohort, ":\n", 
+                 paste(missing_files, collapse = "\n")))
+    }
+    
+    ## RUN SKAT (Continuous Phenotype)
+    tryCatch({
+      # Generate SSD
+      Generate_SSD_SetID(File.Bed, File.Bim, File.Fam, File.SetID, File.SSD, File.Info)
+      SSD.INFO <- Open_SSD(File.SSD, File.Info)
+      
+      # Load phenotype & covariates (continuous trait)
+      FAM <- Read_Plink_FAM_Cov(File.Fam, File.Cov, Is.binary = FALSE, cov_header = TRUE)
+      y   <- FAM$Status  # Continuous phenotype (no need to subtract 1)
+      Age <- FAM$Age
+      Sex <- FAM$Sex.y
+      N.Sample <- length(y)
+      
+      # Fit null model (out_type = "C" for continuous)
+      obj <- SKAT_Null_Model(y ~ Age, out_type = "C")
+      
+      # Run SKAT tests
+      out.skato <- SKAT.SSD.All(SSD.INFO, obj, method = "optimal.adj")
+      out.skato.burden <- SKAT.SSD.All(SSD.INFO, obj, method = "Burden")
+      out.skat <- SKAT.SSD.All(SSD.INFO, obj, method = "SKAT")  
+      # Save results
+      write.table(out.skato$results, file = File.Results.SKATO, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skato.burden$results, file = File.Results.BURDEN, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skat$results, file = File.Results.SKAT, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      
+      # Generate meta-analysis files
+      Generate_Meta_Files(obj, File.Bed, File.Bim, File.SetID, File.Mat, File.SetInfo, N.Sample)
+      
+      # Store meta-analysis file paths
+      File.Mat.vec[i] <- File.Mat
+      File.SetInfo.vec[i] <- File.SetInfo
+      
+      # Close SSD
+      Close_SSD()
+      
+      message(paste0("Successfully processed: ", cohort))
+    }, error = function(e) {
+      message(paste0("ERROR in cohort ", cohort, ": ", e$message))
+    })
+    
+    i <- i + 1
+  }
+  
+  ## STEP 2: META-ANALYSIS
+  if (all(file.exists(File.Mat.vec)) && all(file.exists(File.SetInfo.vec))) {
+    tryCatch({
+      # Read meta-analysis files
+      Cohort.Info <- Open_MSSD_File_2Read(File.Mat.vec, File.SetInfo.vec)
+      
+      # Run meta-analysis
+      out.skato <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "optimal")
+      out.skato.burden <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "Burden")
+      out.skat <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "SKAT")
+      
+      # Save results
+      write.table(out.skato, file = File.Meta.SKATO, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skato.burden, file = File.Meta.BURDEN, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skat, file = File.Meta.SKAT, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      
+      message("\nMeta-analysis completed successfully!")
+    }, error = function(e) {
+      message(paste0("ERROR in meta-analysis: ", e$message))
+    })
+  } else {
+    message("\nERROR: Some meta-analysis input files are missing. Check if all cohorts ran correctly.")
+  }  
+#######################################################################################################
+######################################################################################################
+######################################################################################################
+  # MetaSKAT for combined on PD
+  library(SKAT)
+  library(MetaSKAT)
+  
+  # Set working directory
+  setwd("~/Desktop/R_things/SKAT")
+  
+  # Output files
+  File.Meta.SKATO <- "GLA_PD_meta.results.skato"
+  File.Meta.BURDEN <- "GLA_PD_meta.results.burden"
+  File.Meta.SKAT <- "GLA_PD_meta.results.SKAT"
+  # Cohorts
+  cohorts <- c("FRENCH", "USA", "RUSSIA", "Israel", "AMP_PD", "UKBB")
+  
+  # Prepare meta-analysis file paths
+  File.Mat.vec <- rep("", length(cohorts))
+  File.SetInfo.vec <- rep("", length(cohorts))
+  
+  
+  ## STEP 1: Run SKAT per cohort
+  
+  i <- 1
+  for (cohort in cohorts) {
+    message(paste0("\nProcessing cohort: ", cohort))
+    
+    # Define file paths
+    File.Bed    <- paste0(cohort, ".bed")
+    File.Bim    <- paste0(cohort, ".bim")
+    File.Fam    <- paste0(cohort, ".fam")
+    File.SetID  <- paste0(cohort, ".SETID.txt")
+    File.SSD    <- paste0(cohort, ".SSD")
+    File.Info   <- paste0(cohort, ".info")
+    File.Mat    <- paste0(cohort, ".mat")
+    File.SetInfo <- paste0(cohort, ".MInfo")
+    File.Cov    <- paste0("covar_", cohort, ".txt")
+    File.Results.SKATO <- paste0(cohort, ".results.skato")
+    File.Results.BURDEN <- paste0(cohort, ".results.burden")
+    File.Results.SKAT <- paste0(cohort, ".results.skat")
+    
+    # Check if required files exist
+    required_files <- c(File.Bed, File.Bim, File.Fam, File.SetID, File.Cov)
+    missing_files <- required_files[!file.exists(required_files)]
+    
+    if (length(missing_files) > 0) {
+      stop(paste("ERROR: Missing files for cohort", cohort, ":\n", 
+                 paste(missing_files, collapse = "\n")))
+    }
+    
+    ## RUN SKAT
+    tryCatch({
+      # Generate SSD
+      Generate_SSD_SetID(File.Bed, File.Bim, File.Fam, File.SetID, File.SSD, File.Info)
+      SSD.INFO <- Open_SSD(File.SSD, File.Info)
+      
+      # Load phenotype & covariates (continuous trait)
+      FAM <- Read_Plink_FAM_Cov(File.Fam, File.Cov, Is.binary = FALSE, cov_header = TRUE)
+      y   <- FAM$Status  # Continuous phenotype (no need to subtract 1)
+      Age <- FAM$Age
+      Sex <- FAM$Sex.y
+      N.Sample <- length(y)
+      
+      # Fit null model (out_type = "C" for continuous)
+      obj <- SKAT_Null_Model(y ~ Age + Sex, out_type = "D")
+      
+      # Run SKAT tests
+      out.skato <- SKAT.SSD.All(SSD.INFO, obj, method = "optimal.adj")
+      out.skato.burden <- SKAT.SSD.All(SSD.INFO, obj, method = "Burden")
+      out.skat <- SKAT.SSD.All(SSD.INFO, obj, method = "SKAT")  
+      # Save results
+      write.table(out.skato$results, file = File.Results.SKATO, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skato.burden$results, file = File.Results.BURDEN, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skat$results, file = File.Results.SKAT, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      
+      # Generate meta-analysis files
+      Generate_Meta_Files(obj, File.Bed, File.Bim, File.SetID, File.Mat, File.SetInfo, N.Sample)
+      
+      # Store meta-analysis file paths
+      File.Mat.vec[i] <- File.Mat
+      File.SetInfo.vec[i] <- File.SetInfo
+      
+      # Close SSD
+      Close_SSD()
+      
+      message(paste0("Successfully processed: ", cohort))
+    }, error = function(e) {
+      message(paste0("ERROR in cohort ", cohort, ": ", e$message))
+    })
+    
+    i <- i + 1
+  }
+  
+  
+  ## STEP 2: META-ANALYSIS
+  if (all(file.exists(File.Mat.vec)) && all(file.exists(File.SetInfo.vec))) {
+    tryCatch({
+      # Read meta-analysis files
+      Cohort.Info <- Open_MSSD_File_2Read(File.Mat.vec, File.SetInfo.vec)
+      
+      # Run meta-analysis
+      out.skato <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "optimal")
+      out.skato.burden <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "Burden")
+      out.skat <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "SKAT")
+      
+      # Save results
+      write.table(out.skato, file = File.Meta.SKATO, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skato.burden, file = File.Meta.BURDEN, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      write.table(out.skat, file = File.Meta.SKAT, col.names = TRUE, row.names = FALSE, quote = FALSE)
+      
+      message("\nMeta-analysis completed successfully!")
+    }, error = function(e) {
+      message(paste0("ERROR in meta-analysis: ", e$message))
+    })
+  } else {
+    message("\nERROR: Some meta-analysis input files are missing. Check if all cohorts ran correctly.")
+  }
+  ####By sex
+#Meta - males on PD
+setwd("~/Desktop/R_things/SKAT")
+
+# Set user library path
+lib_path <- "~/R_libs"
+if (!dir.exists(lib_path)) dir.create(lib_path, recursive = TRUE)
+.libPaths(lib_path)
+
+# Install required packages to user library
+if (!requireNamespace("SKAT", quietly = TRUE)) {
+  install.packages("SKAT", repos = "https://cloud.r-project.org", lib = lib_path)
+}
+
+if (!requireNamespace("MetaSKAT", quietly = TRUE)) {
+  install.packages("MetaSKAT", repos = "https://cloud.r-project.org", lib = lib_path)
+}
+library(SKAT)
+library(MetaSKAT)
+
+setwd("~/Desktop/R_things/SKAT")
+
+
+# Output files
+File.Meta.SKATO <- "G6PD_meta.results.skato"
+File.Meta.BURDEN <- "G6PD_meta.results.burden"
+File.Meta.SKAT <- "G6PD_meta.results.SKAT"
+# Cohorts
+cohorts <- c("FRENCH_Male", "USA_Male", "RUSSIA_Male", "Israel_Male","AMP_PD_Male", "UKBB_Male" )
+
+# Prepare meta-analysis file paths
+File.Mat.vec <- rep("", length(cohorts))
+File.SetInfo.vec <- rep("", length(cohorts))
+
+
+## STEP 1: Run SKAT per cohort
+
+i <- 1
+for (cohort in cohorts) {
+  message(paste0("\nProcessing cohort: ", cohort))
+  
+  # Define file paths
+  File.Bed    <- paste0(cohort, ".bed")
+  File.Bim    <- paste0(cohort, ".bim")
+  File.Fam    <- paste0(cohort, ".fam")
+  File.SetID  <- paste0(cohort, ".SETID.txt")
+  File.SSD    <- paste0(cohort, ".SSD")
+  File.Info   <- paste0(cohort, ".info")
+  File.Mat    <- paste0(cohort, ".mat")
+  File.SetInfo <- paste0(cohort, ".MInfo")
+  File.Cov    <- paste0("covar_", cohort, ".txt")
+  File.Results.SKATO <- paste0(cohort, ".results.skato")
+  File.Results.BURDEN <- paste0(cohort, ".results.burden")
+  File.Results.SKAT <- paste0(cohort, ".results.skat")
+  
+  # Check if required files exist
+  required_files <- c(File.Bed, File.Bim, File.Fam, File.SetID, File.Cov)
+  missing_files <- required_files[!file.exists(required_files)]
+  
+  if (length(missing_files) > 0) {
+    stop(paste("ERROR: Missing files for cohort", cohort, ":\n", 
+               paste(missing_files, collapse = "\n")))
+  }
+  
+  ## RUN SKAT (Continuous Phenotype)
+  tryCatch({
+    # Generate SSD
+    Generate_SSD_SetID(File.Bed, File.Bim, File.Fam, File.SetID, File.SSD, File.Info)
+    SSD.INFO <- Open_SSD(File.SSD, File.Info)
+    
+    # Load phenotype & covariates (continuous trait)
+    FAM <- Read_Plink_FAM_Cov(File.Fam, File.Cov, Is.binary = FALSE, cov_header = TRUE)
+    y   <- FAM$Status  # Continuous phenotype (no need to subtract 1)
+    Age <- FAM$Age
+    Sex <- FAM$Sex.y
+    N.Sample <- length(y)
+    
+    # Fit null model 
+    obj <- SKAT_Null_Model(y ~ Age, out_type = "D")
+    
+    # Run SKAT tests
+    out.skato <- SKAT.SSD.All(SSD.INFO, obj, method = "optimal.adj")
+    out.skato.burden <- SKAT.SSD.All(SSD.INFO, obj, method = "Burden")
+    out.skat <- SKAT.SSD.All(SSD.INFO, obj, method = "SKAT")  
+    # Save results
+    write.table(out.skato$results, file = File.Results.SKATO, col.names = TRUE, row.names = FALSE, quote = FALSE)
+    write.table(out.skato.burden$results, file = File.Results.BURDEN, col.names = TRUE, row.names = FALSE, quote = FALSE)
+    write.table(out.skat$results, file = File.Results.SKAT, col.names = TRUE, row.names = FALSE, quote = FALSE)
+    
+    # Generate meta-analysis files
+    Generate_Meta_Files(obj, File.Bed, File.Bim, File.SetID, File.Mat, File.SetInfo, N.Sample)
+    
+    # Store meta-analysis file paths
+    File.Mat.vec[i] <- File.Mat
+    File.SetInfo.vec[i] <- File.SetInfo
+    
+    # Close SSD
+    Close_SSD()
+    
+    message(paste0("Successfully processed: ", cohort))
+  }, error = function(e) {
+    message(paste0("ERROR in cohort ", cohort, ": ", e$message))
+  })
+  
+  i <- i + 1
+}
+
+## STEP 2: META-ANALYSIS
+if (all(file.exists(File.Mat.vec)) && all(file.exists(File.SetInfo.vec))) {
+  tryCatch({
+    # Read meta-analysis files
+    Cohort.Info <- Open_MSSD_File_2Read(File.Mat.vec, File.SetInfo.vec)
+    
+    # Run meta-analysis
+    out.skato <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "optimal")
+    out.skato.burden <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "Burden")
+    out.skat <- MetaSKAT_MSSD_ALL(Cohort.Info, method = "SKAT")
+    
+    # Save results
+    write.table(out.skato, file = File.Meta.SKATO, col.names = TRUE, row.names = FALSE, quote = FALSE)
+    write.table(out.skato.burden, file = File.Meta.BURDEN, col.names = TRUE, row.names = FALSE, quote = FALSE)
+    write.table(out.skat, file = File.Meta.SKAT, col.names = TRUE, row.names = FALSE, quote = FALSE)
+    
+    message("\nMeta-analysis completed successfully!")
+  }, error = function(e) {
+    message(paste0("ERROR in meta-analysis: ", e$message))
+  })
+} else {
+  message("\nERROR: Some meta-analysis input files are missing. Check if all cohorts ran correctly.")
+}  
+
+
+
